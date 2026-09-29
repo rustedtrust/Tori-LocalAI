@@ -11,8 +11,8 @@ No response time, fix, or coordinated disclosure date is guaranteed.
 
 Use GitHub **Private Vulnerability Reporting** on
 [`rustedtrust/Tori-LocalAI`](https://github.com/rustedtrust/Tori-LocalAI):
-**Security → Advisories → Report a vulnerability**. The repository owner must
-enable and verify this feature before making the repository public. If the
+**Security → Advisories → Report a vulnerability**. GitHub Private
+Vulnerability Reporting is enabled for this public repository. If the
 reporting action is unavailable, do not put an unpatched vulnerability,
 exploit, credential, or private user data in a public issue; no personal email
 address is designated as an alternate security contact.
