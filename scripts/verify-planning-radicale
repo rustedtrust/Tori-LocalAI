@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+SCRIPT_DIRECTORY=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+REPOSITORY_ROOT=$(CDPATH= cd -- "$SCRIPT_DIRECTORY/.." && pwd -P)
+
+cd "$REPOSITORY_ROOT" || exit 1
+exec env \
+    PYTHONDONTWRITEBYTECODE=1 \
+    PYTHONPATH=src \
+    TORI_RUN_RADICALE_INTEGRATION=1 \
+    .venv/bin/python -m unittest -v \
+    tests.test_planning_radicale_integration \
+    tests.test_planning_reminder_radicale_integration \
+    tests.test_planning_conversation_radicale_integration

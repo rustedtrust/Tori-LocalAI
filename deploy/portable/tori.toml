@@ -1,0 +1,35 @@
+[model]
+default_profile = "ollama"
+default_model = "gemma4:12b"
+
+[[model.profiles]]
+id = "ollama"
+display_name = "Local Ollama"
+type = "ollama"
+base_url = "http://127.0.0.1:11434"
+timeout_seconds = 600
+keep_alive = "5m"
+
+# Optional capabilities start disabled in a clean portable installation.
+# Configure only services that exist on the destination machine.
+[search]
+enabled = false
+
+[tts]
+enabled = false
+
+[planning]
+enabled = false
+
+[finance]
+enabled = false
+currency = "USD"
+
+# MCP V1 supports only the reviewed local Time server. Enabling it requires
+# explicit absolute executable/Bubblewrap paths plus their SHA-256 identities
+# and the approved get_current_time schema digest; see docs/USER_GUIDE.md.
+[mcp.time]
+enabled = false
+
+[logging]
+level = "INFO"

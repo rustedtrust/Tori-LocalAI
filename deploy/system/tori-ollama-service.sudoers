@@ -1,0 +1,3 @@
+# Installation template: replace @TORI_USER@ with the local account name.
+# Tori may control only its root-owned fixed Ollama helper and its three fixed actions.
+@TORI_USER@ ALL=(root) NOPASSWD: /usr/local/libexec/tori-ollama-service start, /usr/local/libexec/tori-ollama-service stop, /usr/local/libexec/tori-ollama-service restart

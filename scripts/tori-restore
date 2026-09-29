@@ -1,0 +1,381 @@
+#!/usr/bin/env python3
+"""Execute one immutable Tori restore plan after the originating process exits."""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+from pathlib import Path
+import re
+import signal
+import stat
+import subprocess
+import sys
+import time
+from urllib.request import urlopen
+
+
+SCHEMA_VERSION = 1
+# Independent final check: this must match src/tori/restore.py exactly.
+TRUSTED_ORIGIN = "https://github.com/rustedtrust/Tori-LocalAI.git"
+COMMIT = re.compile(r"[0-9a-f]{40}\Z")
+OPERATION = re.compile(r"[0-9a-f]{32}\Z")
+BACKUP = re.compile(r"Tori_[0-9]{8}_[0-9]{6}_[0-9a-f]{16}\Z")
+HEALTH = re.compile(r"http://127\.0\.0\.1:([0-9]{1,5})/api/session\Z")
+WAIT_SECONDS = 120.0
+HEALTH_SECONDS = 45.0
+
+
+class PlanError(RuntimeError):
+    pass
+
+
+def _sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    descriptor = os.open(path, os.O_RDONLY | getattr(os, "O_NOFOLLOW", 0))
+    try:
+        while True:
+            block = os.read(descriptor, 1024 * 1024)
+            if not block:
+                return digest.hexdigest()
+            digest.update(block)
+    finally:
+        os.close(descriptor)
+
+
+def _tree_identity(root: Path) -> str:
+    digest = hashlib.sha256()
+    for current, directories, files in os.walk(root, topdown=True, followlinks=False):
+        current_path = Path(current)
+        relative_root = current_path.relative_to(root)
+        if relative_root == Path("."):
+            directories[:] = [name for name in sorted(directories) if name not in {".git", ".venv"}]
+        else:
+            directories[:] = sorted(directories)
+        for name in directories:
+            child = current_path / name
+            info = os.lstat(child)
+            if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                raise PlanError("The restore candidate contains an unsafe object.")
+            relative = child.relative_to(root).as_posix()
+            digest.update(f"D\0{relative}\0{stat.S_IMODE(info.st_mode):04o}\0".encode("utf-8"))
+        for name in sorted(files):
+            child = current_path / name
+            info = os.lstat(child)
+            if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode):
+                raise PlanError("The restore candidate contains an unsafe object.")
+            relative = child.relative_to(root).as_posix()
+            digest.update(f"F\0{relative}\0{stat.S_IMODE(info.st_mode):04o}\0{info.st_size}\0".encode("utf-8"))
+            digest.update(bytes.fromhex(_sha256(child)))
+    return digest.hexdigest()
+
+
+def _directory(path: Path, uid: int) -> os.stat_result:
+    info = os.lstat(path)
+    if not stat.S_ISDIR(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid != uid:
+        raise PlanError("A restore directory is unsafe or has unexpected ownership.")
+    return info
+
+
+def _regular(path: Path, uid: int) -> os.stat_result:
+    info = os.lstat(path)
+    if not stat.S_ISREG(info.st_mode) or stat.S_ISLNK(info.st_mode) or info.st_uid != uid:
+        raise PlanError("A restore file is unsafe or has unexpected ownership.")
+    return info
+
+
+def _git(root: Path, *arguments: str) -> str:
+    try:
+        return subprocess.run(
+            ["git", "-C", str(root), *arguments],
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.DEVNULL,
+            text=True,
+            check=True,
+        ).stdout.strip()
+    except (OSError, subprocess.CalledProcessError) as exc:
+        raise PlanError("Trusted source verification failed.") from exc
+
+
+def _load_plan(path: Path) -> dict[str, object]:
+    info = os.lstat(path)
+    if (
+        not stat.S_ISREG(info.st_mode)
+        or stat.S_ISLNK(info.st_mode)
+        or info.st_uid != os.geteuid()
+        or stat.S_IMODE(info.st_mode) & 0o077
+        or info.st_size > 64 * 1024
+    ):
+        raise PlanError("The restore plan is unsafe.")
+    try:
+        document = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeError, json.JSONDecodeError) as exc:
+        raise PlanError("The restore plan is malformed.") from exc
+    expected = {
+        "schema_version", "operation_id", "created_at",
+        "selected_backup_identifier", "selected_backup_directory",
+        "selected_manifest_sha256", "safety_backup_identifier",
+        "safety_backup_directory", "safety_manifest_sha256",
+        "expected_current_commit", "target_commit", "trusted_origin",
+        "config_sha256", "candidate_identity_sha256", "live_project", "candidate_path", "rollback_path",
+        "evidence_path", "originating_pid", "expected_uid", "expected_gid",
+        "reuse_venv", "restart_argv", "health_url", "log_path", "result_path",
+    }
+    if not isinstance(document, dict) or set(document) != expected:
+        raise PlanError("The restore plan has an unsupported shape.")
+    return document
+
+
+def _validate(document: dict[str, object]) -> dict[str, object]:
+    operation = document["operation_id"]
+    selected = document["selected_backup_identifier"]
+    safety = document["safety_backup_identifier"]
+    current = document["expected_current_commit"]
+    target = document["target_commit"]
+    digest_fields = (
+        document["selected_manifest_sha256"], document["config_sha256"],
+        document["candidate_identity_sha256"], document["safety_manifest_sha256"],
+    )
+    integers = (document["originating_pid"], document["expected_uid"], document["expected_gid"])
+    if (
+        document["schema_version"] != SCHEMA_VERSION
+        or not isinstance(operation, str) or OPERATION.fullmatch(operation) is None
+        or not isinstance(selected, str) or BACKUP.fullmatch(selected) is None
+        or not isinstance(safety, str) or BACKUP.fullmatch(safety) is None
+        or not isinstance(current, str) or COMMIT.fullmatch(current) is None
+        or not isinstance(target, str) or COMMIT.fullmatch(target) is None
+        or document["trusted_origin"] != TRUSTED_ORIGIN
+        or any(not isinstance(value, str) or re.fullmatch(r"[0-9a-f]{64}", value) is None for value in digest_fields)
+        or any(isinstance(value, bool) or not isinstance(value, int) or value < 0 for value in integers)
+        or not isinstance(document["reuse_venv"], bool)
+        or not isinstance(document["created_at"], str)
+    ):
+        raise PlanError("The restore plan contains invalid bounded values.")
+    uid = int(document["expected_uid"])
+    gid = int(document["expected_gid"])
+    if uid != os.geteuid() or gid != os.getegid():
+        raise PlanError("The restore plan ownership does not match this process.")
+    live = Path(str(document["live_project"]))
+    candidate = Path(str(document["candidate_path"]))
+    rollback = Path(str(document["rollback_path"]))
+    evidence = Path(str(document["evidence_path"]))
+    backup_directory = Path(str(document["selected_backup_directory"]))
+    safety_directory = Path(str(document["safety_backup_directory"]))
+    log_path = Path(str(document["log_path"]))
+    result_path = Path(str(document["result_path"]))
+    if any(not path.is_absolute() for path in (live, candidate, rollback, evidence, backup_directory, safety_directory, log_path, result_path)):
+        raise PlanError("Restore paths must be absolute.")
+    if (
+        candidate.parent != live.parent or rollback.parent != live.parent or evidence.parent != live.parent
+        or candidate.name != f".{live.name}.restore-{operation}"
+        or rollback.name != f".{live.name}.rollback-{operation}"
+        or evidence.name != f".{live.name}.restore-evidence-{operation}"
+        or backup_directory.name != selected
+        or safety_directory.name != safety
+        or safety_directory.parent != backup_directory.parent
+        or log_path.parent != result_path.parent
+        or log_path.parent == live or live in log_path.parents
+        or len({live, candidate, rollback, evidence}) != 4
+    ):
+        raise PlanError("A restore path escaped its bounded location.")
+    restart = document["restart_argv"]
+    if restart != [str(live / "start-tori.sh")]:
+        raise PlanError("The restart method is not the fixed Tori launcher.")
+    health = document["health_url"]
+    match = HEALTH.fullmatch(health) if isinstance(health, str) else None
+    if match is None or not 1 <= int(match.group(1)) <= 65535:
+        raise PlanError("The health endpoint is not bounded to local Tori.")
+    _directory(live, uid)
+    candidate_info = _directory(candidate, uid)
+    if os.path.lexists(rollback) or os.path.lexists(evidence):
+        raise PlanError("A restore activation path already exists.")
+    if os.stat(live.parent).st_dev != candidate_info.st_dev:
+        raise PlanError("Restore activation is not on one filesystem.")
+    _directory(backup_directory, uid)
+    manifest = backup_directory / "manifest.json"
+    _regular(manifest, uid)
+    if _sha256(manifest) != document["selected_manifest_sha256"]:
+        raise PlanError("The selected backup manifest changed before activation.")
+    _directory(safety_directory, uid)
+    safety_manifest = safety_directory / "manifest.json"
+    _regular(safety_manifest, uid)
+    if _sha256(safety_manifest) != document["safety_manifest_sha256"]:
+        raise PlanError("The safety backup manifest changed before activation.")
+    config = live / "tori.toml"
+    _regular(config, uid)
+    if _sha256(config) != document["config_sha256"]:
+        raise PlanError("The live machine configuration changed before activation.")
+    if _git(live, "rev-parse", "HEAD") != current:
+        raise PlanError("The live source changed before activation.")
+    if _git(live, "remote", "get-url", "origin") != TRUSTED_ORIGIN:
+        raise PlanError("The live repository origin is not trusted.")
+    if _git(candidate, "rev-parse", "HEAD") != target:
+        raise PlanError("The candidate source commit did not verify.")
+    if _git(candidate, "remote", "get-url", "origin") != TRUSTED_ORIGIN:
+        raise PlanError("The candidate repository origin is not trusted.")
+    if _git(candidate, "status", "--porcelain"):
+        raise PlanError("The candidate tracked source is not clean.")
+    candidate_config = candidate / "tori.toml"
+    _regular(candidate_config, uid)
+    if _sha256(candidate_config) != document["config_sha256"]:
+        raise PlanError("The candidate did not preserve machine configuration.")
+    if _tree_identity(candidate) != document["candidate_identity_sha256"]:
+        raise PlanError("The restore candidate changed before activation.")
+    if document["reuse_venv"]:
+        _directory(live / ".venv", uid)
+        if os.path.lexists(candidate / ".venv"):
+            raise PlanError("The candidate unexpectedly contains a Python environment.")
+    document.update({
+        "live": live, "candidate": candidate, "rollback": rollback,
+        "evidence": evidence, "log": log_path, "result": result_path,
+    })
+    return document
+
+
+def _wait_for_exit(pid: int, timeout: float = WAIT_SECONDS) -> None:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        try:
+            os.kill(pid, 0)
+        except ProcessLookupError:
+            return
+        except PermissionError as exc:
+            raise PlanError("The originating Tori process ownership is unexpected.") from exc
+        time.sleep(0.1)
+    raise PlanError("The originating Tori process did not exit; activation was refused.")
+
+
+def _write_result(path: Path, document: dict[str, object]) -> None:
+    encoded = (json.dumps(document, sort_keys=True, separators=(",", ":")) + "\n").encode("utf-8")
+    descriptor = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL | getattr(os, "O_NOFOLLOW", 0), 0o600)
+    try:
+        os.write(descriptor, encoded)
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _start(argv: list[str], log_path: Path) -> subprocess.Popen[bytes]:
+    handle = open(log_path, "ab", buffering=0)
+    try:
+        return subprocess.Popen(
+            argv,
+            stdin=subprocess.DEVNULL,
+            stdout=handle,
+            stderr=handle,
+            close_fds=True,
+            start_new_session=True,
+        )
+    finally:
+        handle.close()
+
+
+def _healthy(process: subprocess.Popen[bytes], url: str, timeout: float = HEALTH_SECONDS) -> bool:
+    deadline = time.monotonic() + timeout
+    while time.monotonic() < deadline:
+        if process.poll() is not None:
+            return False
+        try:
+            with urlopen(url, timeout=1.0) as response:
+                document = json.loads(response.read(1024 * 1024).decode("utf-8"))
+            if response.status == 200 and isinstance(document, dict) and document.get("ok") is True:
+                return True
+        except Exception:
+            time.sleep(0.25)
+    return False
+
+
+def _stop(process: subprocess.Popen[bytes]) -> None:
+    if process.poll() is not None:
+        return
+    try:
+        os.killpg(process.pid, signal.SIGTERM)
+        process.wait(timeout=10)
+    except (OSError, subprocess.TimeoutExpired):
+        try:
+            os.killpg(process.pid, signal.SIGKILL)
+        except OSError:
+            pass
+
+
+def _activate(plan: dict[str, object]) -> dict[str, object]:
+    live = plan["live"]
+    candidate = plan["candidate"]
+    rollback = plan["rollback"]
+    evidence = plan["evidence"]
+    assert isinstance(live, Path) and isinstance(candidate, Path)
+    assert isinstance(rollback, Path) and isinstance(evidence, Path)
+    activated = False
+    process: subprocess.Popen[bytes] | None = None
+    try:
+        os.rename(live, rollback)
+        if plan["reuse_venv"]:
+            os.rename(rollback / ".venv", candidate / ".venv")
+        os.rename(candidate, live)
+        activated = True
+        if _sha256(live / "tori.toml") != plan["config_sha256"]:
+            raise PlanError("Machine configuration changed during activation.")
+        process = _start(list(plan["restart_argv"]), plan["log"])
+        if not _healthy(process, str(plan["health_url"])):
+            raise PlanError("The restored Tori instance did not pass structural health checks.")
+        return {
+            "ok": True,
+            "operation_id": plan["operation_id"],
+            "target_commit": plan["target_commit"],
+            "safety_backup_identifier": plan["safety_backup_identifier"],
+            "rollback_path": str(rollback),
+        }
+    except Exception as restore_error:
+        rollback_ok = False
+        if process is not None:
+            _stop(process)
+        try:
+            if activated and os.path.lexists(live):
+                os.rename(live, evidence)
+            if plan["reuse_venv"]:
+                venv_holder = evidence if activated else candidate
+                if os.path.lexists(venv_holder / ".venv") and os.path.lexists(rollback):
+                    os.rename(venv_holder / ".venv", rollback / ".venv")
+            if os.path.lexists(rollback) and not os.path.lexists(live):
+                os.rename(rollback, live)
+            prior = _start(list(plan["restart_argv"]), plan["log"])
+            rollback_ok = _healthy(prior, str(plan["health_url"]))
+            if not rollback_ok:
+                _stop(prior)
+        except Exception:
+            rollback_ok = False
+        raise PlanError(
+            "Restore activation failed; automatic rollback "
+            + ("succeeded." if rollback_ok else "also failed. Evidence was preserved.")
+        ) from restore_error
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) != 2:
+        print("ERROR: one application-owned restore plan is required.", file=sys.stderr)
+        return 2
+    plan_path = Path(argv[1])
+    try:
+        document = _validate(_load_plan(plan_path))
+        _wait_for_exit(int(document["originating_pid"]))
+        # Re-check every mutable precondition after the originating process exits.
+        document = _validate(_load_plan(plan_path))
+        result = _activate(document)
+        _write_result(document["result"], result)
+        return 0
+    except Exception as exc:
+        try:
+            parent = plan_path.parent
+            result_path = parent / "result.json"
+            if not os.path.lexists(result_path):
+                _write_result(result_path, {"ok": False, "error": str(exc)})
+        except Exception:
+            pass
+        print(f"ERROR: {exc}", file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

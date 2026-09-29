@@ -1,0 +1,49 @@
+# Operating-system files
+.DS_Store
+Thumbs.db
+
+# Editor and temporary files
+*~
+*.swp
+*.swo
+*.tmp
+*.temp
+.vscode/
+.idea/
+
+# Local secrets and environment overrides
+.env
+.env.*
+!.env.example
+/tori.toml
+/credentials/
+/secrets/
+
+# Python development environment and caches
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Generated output
+build/
+dist/
+coverage/
+htmlcov/
+logs/
+tmp/
+*.log
+/.cache/
+/node_modules/
+/models/
+/backups/
+/artifacts/
+
+# Local runtime data
+runtime/
+data/local/
+/data/finance/
+/data/knowledge/
+/data/radicale/

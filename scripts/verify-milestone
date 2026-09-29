@@ -1,0 +1,136 @@
+#!/usr/bin/env bash
+set -uo pipefail
+
+SCRIPT_DIRECTORY=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd -P)
+REPOSITORY_ROOT=$(CDPATH= cd -- "$SCRIPT_DIRECTORY/.." && pwd -P)
+PYTHON_COMMAND="$REPOSITORY_ROOT/.venv/bin/python"
+FAILURES=0
+VERIFICATION_TEMP_DIRECTORY=$(mktemp -d /tmp/tori-verify-runtime.XXXXXX) || exit 1
+RUNTIME_BEFORE="$VERIFICATION_TEMP_DIRECTORY/runtime-before.json"
+RUNTIME_AFTER="$VERIFICATION_TEMP_DIRECTORY/runtime-after.json"
+
+cleanup_verification_temp() {
+    case "$VERIFICATION_TEMP_DIRECTORY" in
+        /tmp/tori-verify-runtime.*)
+            rm -rf -- "$VERIFICATION_TEMP_DIRECTORY"
+            ;;
+    esac
+}
+trap cleanup_verification_temp EXIT
+
+section() {
+    printf '\n== %s ==\n' "$1"
+}
+
+run_check() {
+    local label=$1
+    shift
+    printf '%s\n' "$label"
+    if "$@"; then
+        printf 'PASS: %s\n' "$label"
+    else
+        printf 'FAIL: %s\n' "$label" >&2
+        FAILURES=$((FAILURES + 1))
+    fi
+}
+
+cd "$REPOSITORY_ROOT" || exit 1
+
+section "Environment"
+printf 'Repository: %s\n' "$REPOSITORY_ROOT"
+if [[ ! -x "$PYTHON_COMMAND" ]]; then
+    printf 'FAIL: existing project Python is unavailable at %s\n' "$PYTHON_COMMAND" >&2
+    exit 1
+fi
+"$PYTHON_COMMAND" --version
+
+section "Canonical runtime baseline (read-only)"
+if "$PYTHON_COMMAND" scripts/runtime_safety.py snapshot runtime "$RUNTIME_BEFORE"; then
+    printf 'PASS: captured canonical runtime before tests\n'
+else
+    printf 'FAIL: canonical runtime could not be snapshotted before tests\n' >&2
+    exit 1
+fi
+run_check "inspect accepted canonical runtime" "$PYTHON_COMMAND" scripts/runtime_safety.py inspect runtime
+
+section "Complete offline Python suite"
+run_check "unittest discovery" env PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src "$PYTHON_COMMAND" -m unittest discover -s tests -v
+
+section "Read-only Python validation"
+run_check "parse every tracked and untracked project Python file" "$PYTHON_COMMAND" - <<'PY'
+import ast
+from pathlib import Path
+
+for root in (Path("src"), Path("tests")):
+    for path in sorted(root.rglob("*.py")):
+        ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+print("All project Python files parsed successfully.")
+PY
+
+section "JavaScript validation"
+if command -v node >/dev/null 2>&1; then
+    while IFS= read -r javascript; do
+        run_check "node --check $javascript" node --check "$javascript"
+    done < <(find src/tori/web_assets -type f -name '*.js' -print | LC_ALL=C sort)
+    run_check "terminal frontend behavior" node tests/test_terminal_ui.js
+    run_check "terminal policy frontend behavior" node tests/test_terminal_policy_ui.js
+    run_check "terminal stream completion contract" node tests/test_terminal_stream_event.js
+else
+    printf 'FAIL: node is required because packaged JavaScript is present.\n' >&2
+    FAILURES=$((FAILURES + 1))
+fi
+
+section "Diff validation"
+run_check "git diff --check" git diff --check
+run_check "git cached diff --check" git diff --cached --check
+
+section "Founding-document integrity"
+run_check "founding documents match the current HEAD blobs" "$PYTHON_COMMAND" - <<'PY'
+from pathlib import Path
+import subprocess
+
+documents = [Path("docs") / f"0{index}_{name}.md" for index, name in enumerate((
+    "MISSION", "IDENTITY", "CORE_PRINCIPLES", "PERSONALITY", "PHILOSOPHY",
+    "PRODUCT_VISION", "ARCHITECTURE",
+))]
+failed = False
+for path in documents:
+    expected = subprocess.check_output(
+        ["git", "rev-parse", f"HEAD:{path.as_posix()}"], text=True
+    ).strip()
+    actual = subprocess.check_output(["git", "hash-object", str(path)], text=True).strip()
+    status = "MATCH" if expected == actual else "CHANGED"
+    print(f"{status} {path} {actual}")
+    failed |= expected != actual
+raise SystemExit(1 if failed else 0)
+PY
+
+section "Canonical runtime preservation"
+if "$PYTHON_COMMAND" scripts/runtime_safety.py snapshot runtime "$RUNTIME_AFTER"; then
+    printf 'PASS: captured canonical runtime after tests\n'
+else
+    printf 'FAIL: canonical runtime could not be snapshotted after tests\n' >&2
+    FAILURES=$((FAILURES + 1))
+fi
+if [[ -f "$RUNTIME_AFTER" ]]; then
+    run_check "canonical runtime tree unchanged" "$PYTHON_COMMAND" scripts/runtime_safety.py compare "$RUNTIME_BEFORE" "$RUNTIME_AFTER"
+fi
+run_check "inspect canonical runtime after tests" "$PYTHON_COMMAND" scripts/runtime_safety.py inspect runtime
+
+section "Git state (reported, not a cleanliness gate)"
+printf 'Branch: '; git branch --show-current
+printf 'HEAD: '; git rev-parse HEAD
+printf 'Subject: '; git log -1 --format='%s'
+printf '\nStaging:\n'; git diff --cached --name-status
+printf '\nTracked modifications:\n'; git diff --name-status
+printf '\nUntracked files:\n'; git ls-files --others --exclude-standard
+printf '\nRemotes:\n'; git remote -v
+printf '\nAll tags:\n'; git tag --list
+printf '\nTags at HEAD:\n'; git tag --points-at HEAD
+
+section "Verification verdict"
+if (( FAILURES != 0 )); then
+    printf 'FAILED: %d verification section(s) failed.\n' "$FAILURES" >&2
+    exit 1
+fi
+printf 'PASS: complete offline milestone verification succeeded.\n'

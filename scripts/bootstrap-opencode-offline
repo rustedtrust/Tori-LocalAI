@@ -1,0 +1,48 @@
+#!/usr/bin/env python3
+"""Explicitly prepare one OpenCode offline-bootstrap cache generation."""
+
+from __future__ import annotations
+
+import argparse
+import os
+from pathlib import Path
+import sys
+
+from tori.coding_work_bootstrap import OpenCodeOfflineBootstrapper
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--destination", type=Path, required=True)
+    parser.add_argument("--opencode", type=Path, required=True)
+    parser.add_argument("--bubblewrap", type=Path, required=True)
+    parser.add_argument("--version", required=True)
+    parser.add_argument("--model", required=True)
+    parser.add_argument("--network-authorized", action="store_true")
+    arguments = parser.parse_args()
+    if os.environ.get("TORI_RUN_OPENCODE_OFFLINE_BOOTSTRAP") != "1":
+        parser.error(
+            "set TORI_RUN_OPENCODE_OFFLINE_BOOTSTRAP=1 for this explicit provisioning operation"
+        )
+    result = OpenCodeOfflineBootstrapper(
+        destination=arguments.destination,
+        opencode_executable=arguments.opencode,
+        bubblewrap_executable=arguments.bubblewrap,
+        opencode_version=arguments.version,
+        model=arguments.model,
+    ).prepare(network_authorized=arguments.network_authorized)
+    print(f"prepared_root={result.prepared_root}")
+    print(f"receipt={result.receipt}")
+    print(f"cache_file_count={result.cache_file_count}")
+    print(f"cache_total_bytes={result.cache_total_bytes}")
+    print(f"cache_digest={result.cache_digest}")
+    for index, item in enumerate(result.egress_audit, start=1):
+        print(
+            f"egress_{index}={item.destination_host}:{item.destination_port}|"
+            f"{item.outcome}|in={item.inbound_bytes}|out={item.outbound_bytes}"
+        )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

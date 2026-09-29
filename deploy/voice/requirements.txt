@@ -1,0 +1,4 @@
+# Provision separately into deploy/voice/.venv; never installed by enable/start.
+# These packages do not enter Tori's main environment or requirements.txt.
+RealtimeSTT[faster-whisper,silero-onnx-cpu]==1.1.2
+websockets==16.0

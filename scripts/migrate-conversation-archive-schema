@@ -1,0 +1,39 @@
+#!/usr/bin/env python3
+"""Explicit conversation archive schema migration entry point."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+import sys
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+
+from tori.conversation_archive_migration import ArchiveMigrationError  # noqa: E402
+from tori.conversation_archive_schema7_migration import (  # noqa: E402
+    migrate_archive_schema6_to7,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser(
+        description="Migrate one exact Tori conversation archive from schema 6 to schema 7."
+    )
+    parser.add_argument("path", help="Exact existing archive path; there is no default.")
+    arguments = parser.parse_args()
+    try:
+        projects, chats, entries, extractions = migrate_archive_schema6_to7(arguments.path)
+    except ArchiveMigrationError as exc:
+        print(f"Migration refused: {exc}", file=sys.stderr)
+        return 1
+    print(
+        "Conversation archive migration verified: "
+        f"schema 6 -> 7; projects={projects}; chats={chats}; "
+        f"transcript_entries={entries}; memory_extractions={extractions}; "
+        "structured_project_rows=0."
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

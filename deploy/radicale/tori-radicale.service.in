@@ -1,0 +1,13 @@
+[Unit]
+Description=Tori local Radicale CalDAV service
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=@REPOSITORY_ROOT@/.venv/bin/radicale -H 127.0.0.1:5232 --auth-type none --storage-filesystem-folder %h/.local/share/tori/radicale/collections --logging-level warning
+Restart=on-failure
+RestartSec=2
+UMask=0077
+
+[Install]
+WantedBy=default.target

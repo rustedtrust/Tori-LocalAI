@@ -1,0 +1,51 @@
+.terminal-drawer {
+  display: grid;
+  gap: 0.7rem;
+  min-width: 0;
+  padding: 0.8rem;
+  border: 1px solid var(--color-border-strong);
+  background: var(--color-surface-1);
+}
+.terminal-drawer[hidden], .terminal-body[hidden] { display: none; }
+.terminal-header, .terminal-controls, .terminal-view-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+.terminal-heading { margin-right: auto; }
+.terminal-heading h2 { margin: 0; font-size: 1.05rem; }
+.terminal-heading .eyebrow { margin: 0; }
+.terminal-selector { display: flex; align-items: center; gap: 0.3rem; font-size: 0.8rem; }
+.terminal-selector select { max-width: 12rem; background: var(--color-surface-input); color: var(--color-text-primary); border: 1px solid var(--color-border); border-radius: 0.4rem; padding: 0.35rem; }
+#terminal-status { font-size: 0.85rem; color: var(--color-text-secondary); }
+.terminal-body { display: grid; gap: 0.55rem; min-width: 0; }
+.terminal-request-form { display: flex; align-items: end; gap: 0.5rem; flex-wrap: wrap; }
+.terminal-request-form label { display: grid; gap: 0.25rem; flex: 1 1 9rem; font-size: 0.8rem; }
+.terminal-request-form label:first-child { flex-basis: 18rem; }
+.terminal-request-form input, .terminal-request-form select {
+  min-width: 0; width: 100%; padding: 0.45rem; border-radius: 0.4rem;
+  border: 1px solid var(--color-border); background: var(--color-surface-input);
+  color: var(--color-text-primary); font: inherit;
+}
+#terminal-approval-dialog { max-width: min(95vw, 44rem); color: var(--color-text-primary); background: var(--color-surface-raised); border: 1px solid var(--color-border-strong); border-radius: 0.7rem; }
+#terminal-approval-dialog::backdrop { background: #000b; }
+#terminal-approval-details { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 35vh; overflow: auto; }
+.terminal-meta, .terminal-control-notice, .terminal-unavailable { margin: 0; font-size: 0.8rem; color: var(--color-text-secondary); }
+.terminal-viewport { height: min(36vh, 22rem); min-height: 10rem; overflow: hidden; background: #090b0e; border: 1px solid var(--color-border); border-radius: 0.4rem; padding: 0.4rem; }
+.terminal-viewport:focus-within { outline: 2px solid var(--color-focus); outline-offset: 2px; }
+.terminal-drawer.is-expanded { position: fixed; z-index: 30; inset: 3vh 3vw; overflow: auto; box-shadow: 0 1rem 3rem #000b; }
+.terminal-drawer.is-expanded .terminal-viewport { height: min(67vh, 48rem); }
+.terminal-controls .button { font-size: 0.8rem; }
+.terminal-policy-settings { margin-top: 1rem; padding: 1rem; }
+.terminal-policy-form { display: flex; flex-wrap: wrap; gap: 0.6rem; align-items: end; }
+.terminal-policy-form label { display: grid; gap: 0.25rem; min-width: 10rem; flex: 1; }
+.terminal-policy-form input, .terminal-policy-form select { padding: 0.45rem; background: var(--color-surface-input); color: var(--color-text-primary); border: 1px solid var(--color-border); border-radius: 0.4rem; }
+.terminal-policy-rule { border-top: 1px solid var(--color-border); padding: 0.55rem 0; overflow-wrap: anywhere; }
+.terminal-policy-rule p { margin: 0 0 0.4rem; }
+.terminal-policy-rule button { margin-right: 0.4rem; }
+@media (max-width: 680px) {
+  .terminal-drawer.is-expanded { inset: 1vh 1vw; }
+  .terminal-selector { order: 3; width: 100%; }
+  .terminal-selector select { flex: 1; }
+}

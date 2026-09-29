@@ -1,0 +1,388 @@
+#!/usr/bin/env python3
+"""Opt-in normal-host acceptance proof for OpenCode ACP transport isolation."""
+
+from __future__ import annotations
+
+import json
+import os
+from pathlib import Path
+import selectors
+import shutil
+import socket
+import subprocess
+import sys
+from tempfile import TemporaryDirectory
+import threading
+import time
+import urllib.request
+
+
+REPOSITORY = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(REPOSITORY / "src"))
+
+from tori.coding_work_provider_transport import (  # noqa: E402
+    NarrowOpenAIProviderRelay,
+    OpenAICompatibleInferencePolicy,
+)
+
+
+OPENCODE = Path.home() / ".opencode/bin/opencode"
+MODEL = "qwen3.8:latest"
+ACP_CONTROL_TIMEOUT_SECONDS = 30.0
+ACP_MODEL_TASK_TIMEOUT_SECONDS = 15 * 60.0
+ACP_SHUTDOWN_GRACE_SECONDS = 5.0
+
+
+class _ACPCallTimeout(TimeoutError):
+    def __init__(
+        self,
+        method: str,
+        timeout_seconds: float,
+        notification_count: int,
+        update_types: set[str],
+        process_alive: bool,
+    ) -> None:
+        updates = ",".join(sorted(update_types)) or "none"
+        state = "alive" if process_alive else "exited"
+        super().__init__(
+            f"{method} exceeded its {timeout_seconds:g}s deadline; "
+            f"ACP process={state}, notifications={notification_count}, "
+            f"update_types={updates}"
+        )
+
+
+class _HostService:
+    def __init__(self) -> None:
+        self.socket = socket.socket()
+        self.socket.bind(("127.0.0.1", 0))
+        self.socket.listen()
+        self.socket.settimeout(0.2)
+        self.port = self.socket.getsockname()[1]
+        self.reached = False
+        self.stop = threading.Event()
+        self.thread = threading.Thread(target=self._serve, daemon=True)
+
+    def _serve(self) -> None:
+        while not self.stop.is_set():
+            try:
+                client, _ = self.socket.accept()
+            except TimeoutError:
+                continue
+            except OSError:
+                if self.stop.is_set():
+                    return
+                raise
+            self.reached = True
+            client.close()
+
+    def __enter__(self) -> "_HostService":
+        self.thread.start()
+        return self
+
+    def __exit__(self, *_args: object) -> None:
+        self.stop.set()
+        self.socket.close()
+        self.thread.join(timeout=2)
+
+
+class _ACP:
+    def __init__(self, command: list[str], environment: dict[str, str]) -> None:
+        self.process = subprocess.Popen(
+            command,
+            env=environment,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            bufsize=1,
+        )
+        assert self.process.stdin is not None
+        assert self.process.stdout is not None
+        self.selector = selectors.DefaultSelector()
+        self.selector.register(self.process.stdout, selectors.EVENT_READ)
+        self.update_types: set[str] = set()
+        self.changed_paths: set[str] = set()
+        self._closed = False
+        self.stderr_excerpt = ""
+
+    def call(
+        self,
+        identifier: int,
+        method: str,
+        params: dict[str, object],
+        *,
+        timeout_seconds: float = ACP_CONTROL_TIMEOUT_SECONDS,
+    ) -> dict[str, object]:
+        if timeout_seconds <= 0:
+            raise ValueError("The ACP call timeout must be positive.")
+        assert self.process.stdin is not None
+        self.process.stdin.write(
+            json.dumps({"jsonrpc": "2.0", "id": identifier, "method": method, "params": params})
+            + "\n"
+        )
+        self.process.stdin.flush()
+        deadline = time.monotonic() + timeout_seconds
+        notification_count = 0
+        while True:
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise _ACPCallTimeout(
+                    method,
+                    timeout_seconds,
+                    notification_count,
+                    self.update_types,
+                    self.process.poll() is None,
+                )
+            if not self.selector.select(timeout=min(1.0, remaining)):
+                if self.process.poll() is not None:
+                    raise RuntimeError("sandboxed ACP exited before responding")
+                continue
+            message = json.loads(self.process.stdout.readline())
+            if message.get("method") == "session/update":
+                notification_count += 1
+                update = message.get("params", {}).get("update", {})
+                kind = update.get("sessionUpdate")
+                if isinstance(kind, str):
+                    self.update_types.add(kind)
+                for location in update.get("locations", []):
+                    path = location.get("path")
+                    if isinstance(path, str):
+                        self.changed_paths.add(path)
+                continue
+            if message.get("id") == identifier:
+                return message
+
+    def close(self) -> None:
+        if self._closed:
+            return
+        self._closed = True
+        self.selector.close()
+        if self.process.poll() is None:
+            self.process.terminate()
+            try:
+                self.process.wait(timeout=ACP_SHUTDOWN_GRACE_SECONDS)
+            except subprocess.TimeoutExpired:
+                self.process.kill()
+                self.process.wait(timeout=ACP_SHUTDOWN_GRACE_SECONDS)
+        if self.process.stderr is not None:
+            self.stderr_excerpt = self.process.stderr.read(64 * 1024)
+        if self.process.stdin is not None:
+            self.process.stdin.close()
+        if self.process.stdout is not None:
+            self.process.stdout.close()
+        if self.process.stderr is not None:
+            self.process.stderr.close()
+
+
+def _require_host_support() -> Path:
+    if os.environ.get("TORI_RUN_OPENCODE_TRANSPORT_ACCEPTANCE") != "1":
+        raise SystemExit(
+            "Set TORI_RUN_OPENCODE_TRANSPORT_ACCEPTANCE=1 to run this opt-in host proof."
+        )
+    bwrap = shutil.which("bwrap")
+    if bwrap is None:
+        raise SystemExit("Bubblewrap is not installed.")
+    if not OPENCODE.is_file():
+        raise SystemExit(f"OpenCode is unavailable at {OPENCODE}.")
+    probe_command = [
+        bwrap,
+        "--unshare-all",
+        "--ro-bind", "/usr", "/usr",
+        "--symlink", "usr/bin", "/bin",
+        "--symlink", "usr/lib", "/lib",
+        "--proc", "/proc",
+        "--dev", "/dev",
+        "--", "/usr/bin/true",
+    ]
+    if Path("/usr/lib64").exists():
+        insertion = probe_command.index("--proc")
+        probe_command[insertion:insertion] = ["--symlink", "usr/lib64", "/lib64"]
+    probe = subprocess.run(
+        probe_command,
+        stdin=subprocess.DEVNULL,
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.PIPE,
+        check=False,
+        timeout=5,
+    )
+    if probe.returncode:
+        raise SystemExit("Bubblewrap namespaces are unavailable: " + probe.stderr.decode(errors="replace"))
+    tags = json.load(urllib.request.urlopen("http://127.0.0.1:11434/api/tags", timeout=3))
+    if MODEL not in {item.get("name") for item in tags.get("models", [])}:
+        raise SystemExit(f"The existing local model {MODEL} is unavailable; no download was attempted.")
+    return Path(bwrap)
+
+
+def _config() -> str:
+    return json.dumps(
+        {
+            "$schema": "https://opencode.ai/config.json",
+            "autoupdate": False,
+            "plugin": [],
+            "enabled_providers": ["tori-approved-local"],
+            "provider": {
+                "tori-approved-local": {
+                    "name": "Tori Approved Local Relay",
+                    "npm": "@ai-sdk/openai-compatible",
+                    "options": {
+                        "apiKey": "non-secret-required-by-client-library",
+                        "baseURL": "http://127.0.0.1:11434/v1",
+                        "timeout": 120000,
+                    },
+                    "models": {
+                        MODEL: {
+                            "name": "Qwen 3.8 Local",
+                            "tool_call": True,
+                            "limit": {"context": 262144, "output": 8192},
+                        }
+                    },
+                }
+            },
+            "permission": {
+                "*": "deny",
+                "read": "allow",
+                "edit": "allow",
+                "bash": "deny",
+                "external_directory": "deny",
+                "webfetch": "deny",
+                "websearch": "deny",
+            },
+        },
+        indent=2,
+    )
+
+
+def _bwrap_command(bwrap: Path, root: Path, host_service_port: int) -> list[str]:
+    workspace = root / "workspace"
+    private = root / "private"
+    command = [
+        str(bwrap),
+        "--die-with-parent",
+        "--new-session",
+        "--unshare-all",
+        "--ro-bind", "/usr", "/usr",
+        "--symlink", "usr/bin", "/bin",
+        "--symlink", "usr/lib", "/lib",
+        "--proc", "/proc",
+        "--dev", "/dev",
+        "--tmpfs", "/tmp",
+        "--dir", "/transport",
+        "--ro-bind", str(REPOSITORY / "src/tori/coding_work_provider_transport.py"), "/transport/provider.py",
+        "--dir", "/harness",
+        "--ro-bind", str(OPENCODE), "/harness/opencode",
+        "--ro-bind", str(private / "config"), "/harness/config",
+        "--bind", str(private / "state"), "/harness/state",
+        "--ro-bind", str(private / "ipc"), "/harness/ipc",
+        "--bind", str(workspace), "/workspace",
+        "--ro-bind", str(workspace / ".git"), "/workspace/.git",
+        "--setenv", "HOME", "/harness/state/home",
+        "--setenv", "XDG_CONFIG_HOME", "/harness/config",
+        "--setenv", "XDG_DATA_HOME", "/harness/state/data",
+        "--setenv", "XDG_CACHE_HOME", "/harness/state/cache",
+        "--setenv", "XDG_STATE_HOME", "/harness/state/state",
+        "--setenv", "TMPDIR", "/tmp",
+        "--setenv", "PATH", "/usr/local/bin:/usr/bin:/bin",
+        "--setenv", "LANG", "C.UTF-8",
+        "--setenv", "LC_ALL", "C.UTF-8",
+        "--setenv", "OPENCODE_DISABLE_AUTOUPDATE", "true",
+        "--setenv", "TORI_PROVIDER_SECURITY_PROBE", "1",
+        "--setenv", "TORI_PROBE_HOST_PORT", str(host_service_port),
+        "--chdir", "/workspace",
+        "--",
+        "/usr/bin/python3", "/transport/provider.py",
+        "--unix-socket", "/harness/ipc/provider.sock",
+        "--port", "11434",
+        "--",
+        "/harness/opencode", "acp", "--pure", "--cwd", "/workspace",
+    ]
+    if Path("/usr/lib64").exists():
+        insertion = command.index("--proc")
+        command[insertion:insertion] = ["--symlink", "usr/lib64", "/lib64"]
+    return command
+
+
+def main() -> int:
+    bwrap = _require_host_support()
+    skip_model = os.environ.get("TORI_OPENCODE_TRANSPORT_SKIP_MODEL") == "1"
+    with TemporaryDirectory(prefix="tori-opencode-transport-acceptance-") as temporary:
+        root = Path(temporary)
+        workspace = root / "workspace"
+        private = root / "private"
+        (private / "config/opencode").mkdir(parents=True)
+        (private / "state/home").mkdir(parents=True)
+        (private / "ipc").mkdir(parents=True)
+        workspace.mkdir()
+        (workspace / "synthetic.txt").write_text("before\n", encoding="utf-8")
+        subprocess.run(["git", "init", "-q", str(workspace)], check=True)
+        (private / "config/opencode/opencode.json").write_text(_config(), encoding="utf-8")
+
+        # Bootstrap only disposable OpenCode package material before config becomes read-only.
+        bootstrap_env = {
+            "PATH": f"{OPENCODE.parent}:/usr/local/bin:/usr/bin:/bin",
+            "HOME": str(private / "state/home"),
+            "XDG_CONFIG_HOME": str(private / "config"),
+            "XDG_DATA_HOME": str(private / "state/data"),
+            "XDG_CACHE_HOME": str(private / "state/cache"),
+            "XDG_STATE_HOME": str(private / "state/state"),
+            "TMPDIR": str(private / "state/cache"),
+            "OPENCODE_DISABLE_AUTOUPDATE": "true",
+        }
+        subprocess.run(
+            [str(OPENCODE), "debug", "config", "--pure"],
+            cwd=workspace,
+            env=bootstrap_env,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.DEVNULL,
+            check=True,
+            timeout=30,
+        )
+
+        policy = OpenAICompatibleInferencePolicy("127.0.0.1", 11434, MODEL)
+        with _HostService() as host_service:
+            with NarrowOpenAIProviderRelay(private / "ipc/provider.sock", policy) as relay:
+                command = _bwrap_command(bwrap, root, host_service.port)
+                acp = _ACP(command, {"PATH": "/usr/bin:/bin"})
+                try:
+                    initialized = acp.call(
+                        1,
+                        "initialize",
+                        {"protocolVersion": 1, "clientCapabilities": {}, "clientInfo": {"name": "tori-host-proof", "version": "1"}},
+                    )
+                    if initialized.get("result", {}).get("protocolVersion") != 1:
+                        raise RuntimeError("ACP initialization failed")
+                    created = acp.call(2, "session/new", {"cwd": "/workspace", "mcpServers": []})
+                    session_id = created["result"]["sessionId"]
+                    if not skip_model:
+                        result = acp.call(
+                            3,
+                            "session/prompt",
+                            {
+                                "sessionId": session_id,
+                                "prompt": [{"type": "text", "text": "Edit only synthetic.txt to contain exactly after followed by one newline. Do not run shell commands."}],
+                            },
+                            timeout_seconds=ACP_MODEL_TASK_TIMEOUT_SECONDS,
+                        )
+                        if result.get("result", {}).get("stopReason") != "end_turn":
+                            raise RuntimeError("ACP task did not complete")
+                    closed = acp.call(4, "session/close", {"sessionId": session_id})
+                    if "error" in closed:
+                        raise RuntimeError("ACP session close failed")
+                finally:
+                    acp.close()
+
+                expected = b"before\n" if skip_model else b"after\n"
+                if workspace.joinpath("synthetic.txt").read_bytes() != expected:
+                    raise RuntimeError("The sandboxed task result is incorrect")
+                if host_service.reached:
+                    raise RuntimeError("The isolated worker reached an unrelated host service")
+                allowed = [item for item in relay.audit if item.outcome == "allowed"]
+                if any(item.path != "/v1/chat/completions" for item in allowed):
+                    raise RuntimeError("The provider relay admitted an unexpected operation")
+                if not any(item.outcome == "rejected:method_denied" for item in relay.audit):
+                    raise RuntimeError("The sandbox provider-denial probe was not observed")
+                print(json.dumps({"session_id": session_id, "skip_model": skip_model, "changed_paths": sorted(acp.changed_paths), "event_types": sorted(acp.update_types), "relay_requests": len(relay.audit)}, sort_keys=True))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

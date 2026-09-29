@@ -1,0 +1,17 @@
+#!/bin/sh
+# Root-owned installed helper for Tori's one bounded system service.
+
+set -eu
+
+if [ "$#" -ne 1 ]; then
+    exit 64
+fi
+
+case "$1" in
+    start|stop|restart)
+        exec /usr/bin/timeout --signal=TERM 15s /usr/bin/systemctl "$1" ollama.service
+        ;;
+    *)
+        exit 64
+        ;;
+esac

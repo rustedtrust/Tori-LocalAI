@@ -1,0 +1,60 @@
+#!/usr/bin/env python3
+"""Explicit prepared-runtime smoke: ten silent turns, no audio retention/install."""
+
+import argparse
+from pathlib import Path
+import sys
+import threading
+import time
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
+from tori.realtimestt_adapter import RealtimeSTTAdapter
+from tori.speech_recognition import AudioFormat, RecognitionError
+from tori.voice_input_runtime import VoiceRuntimeSettings
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("environment_root", type=Path)
+    parser.add_argument("model_root", type=Path)
+    parser.add_argument("--port", type=int, default=8013)
+    args = parser.parse_args()
+    adapter = RealtimeSTTAdapter(VoiceRuntimeSettings(args.environment_root, args.model_root, args.port))
+    condition = threading.Condition()
+    results = {}
+
+    def receive(event):
+        with condition:
+            if event.kind in {"final", "no_speech", "error"}:
+                # Do not retain transcript text, even if unexpected speech appears.
+                results[event.utterance_id] = event.kind
+                condition.notify_all()
+
+    try:
+        started = time.monotonic()
+        adapter.prepare()
+        print(f"Prepared authenticated runtime in {time.monotonic() - started:.2f}s")
+        adapter.open_session("explicit-smoke-session", receive)
+        for number in range(10):
+            turn = f"smoke-{number}"
+            adapter.begin_utterance(turn, AudioFormat(48000))
+            adapter.feed_audio(turn, 1, b"\x00\x00" * 4800)
+            adapter.finalize_utterance(turn)
+            with condition:
+                if not condition.wait_for(lambda: turn in results or None in results, 10):
+                    raise RecognitionError("finalization_timeout")
+                if results.get(turn) != "no_speech":
+                    raise RecognitionError("communication_failed")
+        print("PASS: ten no-speech turns on one recognition session")
+        adapter.close_session()
+    except RecognitionError as exc:
+        print(f"NOT VERIFIED: {exc.code}; prepare prerequisites separately", file=sys.stderr)
+        return 1
+    finally:
+        adapter.stop()
+    print("PASS: owned runtime stopped")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

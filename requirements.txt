@@ -1,0 +1,13 @@
+# Bounded adapter dependencies for Planning.
+caldav==2.2.6
+Radicale==3.7.8
+
+# Finance V1 workbook repository (Office Open XML .xlsx read/write).
+openpyxl==3.1.5
+
+# Remote Chat V1 outbound Discord Gateway/REST adapter.
+hikari==2.6.0
+
+# Reviewed local stdio MCP V1 proof: read-only, no-account Time server.
+mcp==1.30.0
+mcp-server-time==2026.8.18

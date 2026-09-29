@@ -1,0 +1,783 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="tori-csrf" content="__TORI_CSRF_TOKEN__">
+  <title>Tori — Local conversation</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <link rel="stylesheet" href="/assets/vendor/xterm/xterm.css">
+  <link rel="stylesheet" href="/assets/terminal_ui.css">
+  <script src="/assets/view_modules.js" defer></script>
+  <script src="/assets/settings.js" defer></script>
+  <script src="/assets/utility.js" defer></script>
+  <script src="/assets/ui.js" defer></script>
+  <script src="/assets/audio.js" defer></script>
+  <script src="/assets/app.js" defer></script>
+  <script src="/assets/security.js" defer></script>
+  <script src="/assets/voice_input.js" defer></script>
+  <script src="/assets/manage.js" defer></script>
+  <script src="/assets/skills_management.js" defer></script>
+  <script src="/assets/vendor/xterm/xterm.js" defer></script>
+  <script src="/assets/vendor/xterm/addon-fit.js" defer></script>
+  <script src="/assets/terminal_ui.js" defer></script>
+  <script src="/assets/terminal_policy_ui.js" defer></script>
+</head>
+<body data-initial-view="__TORI_INITIAL_VIEW__">
+  <a class="skip-link" href="#main-content">Skip to main content</a>
+
+  <div class="app-shell">
+    <header class="mobile-toolbar">
+      <button class="mobile-nav-trigger icon-button" type="button" aria-label="Open navigation" aria-expanded="false" aria-controls="mobile-menu-panel">☰</button>
+      <span class="mobile-brand">Tori</span>
+      <div class="mobile-toolbar-actions">
+        <button class="icon-button" type="button" data-utility-toggle aria-label="Open status and utilities" aria-expanded="false">◫</button>
+        <button class="icon-button" type="button" data-settings-shortcut aria-label="Open Settings">⚙</button>
+      </div>
+      <div id="mobile-menu-panel" class="mobile-menu-panel" hidden>
+        <div class="mobile-panel-heading">
+          <p class="mobile-menu-heading">Workspace</p>
+          <button class="icon-button mobile-panel-close" type="button" aria-label="Close navigation">×</button>
+        </div>
+        <div id="mobile-navigation-slot"></div>
+        <div id="mobile-history-slot"></div>
+      </div>
+      <div id="mobile-utility-panel" class="mobile-utility-panel" hidden>
+        <div class="mobile-panel-heading">
+          <p class="mobile-menu-heading">Status &amp; utilities</p>
+          <button class="icon-button mobile-utility-close" type="button" aria-label="Close status and utilities">×</button>
+        </div>
+        <div id="mobile-utility-slot"></div>
+      </div>
+    </header>
+
+    <aside class="sidebar" aria-label="Tori workspace">
+      <header class="brand">
+        <span class="brand-mark" aria-hidden="true"><svg viewBox="0 0 48 48" fill="none"><path d="M9 14h30M24 14v25" stroke="currentColor" stroke-width="5" stroke-linecap="round"/><path d="M6 26a18 18 0 0 1 32-13M42 22A18 18 0 0 1 10 35" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg></span>
+        <div>
+          <p class="eyebrow">Local companion</p>
+          <p class="brand-name">Tori</p>
+        </div>
+      </header>
+
+      <nav class="primary-nav" aria-label="Primary navigation">
+        <div class="nav-group">
+          <p class="nav-group-label">Primary</p>
+          <a class="nav-item" href="/#home" data-view-link="home"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m3 11 9-8 9 8M5 10v11h5v-7h4v7h5V10"/></svg>Home</a>
+          <a class="nav-item" href="/" data-view-link="conversation"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M21 11a8 8 0 0 1-8 8H8l-5 3 2-6a8 8 0 1 1 16-5Z"/></svg>Chat</a>
+          <a class="nav-item" href="/manage#projects" data-view-link="projects"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M3 7V4h7l3 3h8v13H3ZM3 10h18"/></svg>Projects</a>
+          <a class="nav-item" href="/security" data-view-link="security"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2 3 6v6c0 5 3 8 9 10 6-2 9-5 9-10V6L12 2Zm-4 9 3 3 5-5"/></svg>Security</a>
+          <a class="nav-item" href="/manage#tasks" data-view-link="tasks"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M9 21h6M5 17h14l-2-4V8a5 5 0 0 0-10 0v5Z"/></svg>Reminders</a>
+          <a class="nav-item" href="/manage#memories" data-view-link="memories"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l5 5v8l-5 5H8l-5-5V8ZM8 8h8v8H8ZM12 3v5m0 8v5M3 12h5m8 0h5"/></svg>Memory</a>
+        </div>
+        <div class="nav-group nav-group-tools">
+          <p class="nav-group-label">Tools</p>
+          <a class="nav-item nav-item-secondary" href="/manage#knowledge" data-view-link="knowledge"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 5C9 3 5 3 2 4v15c4-1 7-1 10 1 3-2 6-2 10-1V4c-3-1-7-1-10 1Zm0 0v15"/></svg>Knowledge</a>
+          <a class="nav-item nav-item-secondary" href="/manage#scheduled-work" data-view-link="scheduled-work"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M5 5h14v16H5ZM8 2v6m8-6v6M5 10h14m-7 3v3h3"/></svg>Scheduled Work</a>
+          <a class="nav-item nav-item-secondary" href="/commands" data-view-link="commands"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="m13 2-9 12h7l-1 8 10-13h-8Z"/></svg>Commands</a>
+          <a class="nav-item nav-item-secondary" href="/skills" data-view-link="skills-mcp"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3v5m8-5v5M5 8h14v4a7 7 0 0 1-14 0Zm7 11v3"/></svg>Skills &amp; MCP</a>
+        </div>
+        <div class="nav-group nav-group-settings">
+          <p class="nav-group-label">System</p>
+          <a class="nav-item nav-item-secondary" href="/settings" data-view-link="settings"><svg class="nav-icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16M4 12h16M4 19h16M8 2v6m8 1v6m-6 1v6"/></svg>Settings</a>
+        </div>
+      </nav>
+
+      <section class="sidebar-conversations" aria-labelledby="recent-chats-heading">
+        <div class="sidebar-section-heading">
+          <h2 id="recent-chats-heading">Recent chats</h2>
+          <button id="refresh-chats" class="icon-button" type="button" aria-label="Refresh recent chats">↻</button>
+        </div>
+        <button id="new-session" class="button primary new-chat-button" type="button">New chat</button>
+        <p id="chat-history-error" class="error compact-error" role="alert" hidden></p>
+        <div id="chat-list" class="chat-history-list" aria-live="polite"></div>
+      </section>
+
+      <p class="local-boundary">Shared by browsers connected to this Tori process</p>
+    </aside>
+
+    <div id="workspace-shell" class="workspace-shell">
+    <main id="main-content" class="app-main" tabindex="-1">
+      <section id="view-home" class="view home-view" data-view-panel="home" aria-labelledby="home-heading" hidden>
+        <header class="home-hero surface-card">
+          <p class="eyebrow">Home <span aria-hidden="true">/</span> Your local workspace</p>
+          <h1 id="home-heading">Ready when you are.</h1>
+          <p class="home-intro">Your conversation, ongoing work, and next steps. A little space to see what matters.</p>
+          <div id="home-hero-session" class="home-hero-session"></div>
+        </header>
+        <div id="home-overview-slot"></div>
+      </section>
+      <section
+        id="view-conversation"
+        class="view conversation-view"
+        data-view-panel="conversation"
+        aria-labelledby="conversation-heading"
+      >
+        <header class="view-header">
+          <div>
+            <p class="eyebrow">Conversation</p>
+            <h1 id="conversation-heading">Talk with Tori</h1>
+          </div>
+          <button id="terminal-toggle" class="button secondary" type="button" aria-controls="terminal-drawer" aria-expanded="false">Terminal</button>
+        </header>
+
+        <section id="terminal-drawer" class="terminal-drawer surface-card" aria-label="Supervised terminal" hidden>
+          <header class="terminal-header">
+            <div class="terminal-heading"><p class="eyebrow">Supervised terminal</p><h2>Terminal</h2></div>
+            <label class="terminal-selector" for="terminal-sessions">Session <select id="terminal-sessions" aria-label="Terminal session"></select></label>
+            <span id="terminal-status" role="status" aria-live="polite">Checking availability…</span>
+            <div class="terminal-view-actions">
+              <button id="terminal-expand" class="button secondary" type="button" aria-label="Expand terminal">Expand</button>
+              <button id="terminal-minimize" class="button secondary" type="button" aria-label="Minimize terminal">Minimize</button>
+            </div>
+          </header>
+          <p id="terminal-unavailable" class="terminal-unavailable" hidden>Terminal access is currently available only from the computer running Tori.</p>
+          <div id="terminal-body" class="terminal-body">
+            <form id="terminal-request-form" class="terminal-request-form" autocomplete="off">
+              <label for="terminal-command">Command <input id="terminal-command" type="text" required maxlength="2000" spellcheck="false" placeholder="Exact command to run"></label>
+              <label for="terminal-cwd">Working directory <input id="terminal-cwd" type="text" required maxlength="1024" placeholder="/path/to/project" spellcheck="false"></label>
+              <label for="terminal-scope">Scope for next command <select id="terminal-scope"><option value="PROJECT_SANDBOX">Project sandbox</option><option value="HOST_USER">Host user</option></select></label>
+              <button id="terminal-request" class="button primary" type="submit">Run through policy</button>
+            </form>
+            <p id="terminal-request-feedback" class="terminal-control-notice" role="status" aria-live="polite"></p>
+            <p id="terminal-meta" class="terminal-meta"></p>
+            <div id="terminal-viewport" class="terminal-viewport" role="application" aria-label="Terminal output and human keyboard input after Take Control"></div>
+            <p id="terminal-control-notice" class="terminal-control-notice">Observe only. Human keyboard input is disabled until you take control.</p>
+            <div class="terminal-controls" aria-label="Terminal controls">
+              <button id="terminal-take-control" class="button primary" type="button">Take Control</button>
+              <button id="terminal-release-control" class="button secondary" type="button" hidden>Release Control</button>
+              <button id="terminal-enter-private" class="button secondary" type="button">Enter Private Input</button>
+              <button id="terminal-exit-private" class="button secondary" type="button" hidden>Exit Private Input</button>
+              <button id="terminal-interrupt" class="button secondary" type="button">Interrupt</button>
+              <button id="terminal-terminate" class="button secondary" type="button">Terminate</button>
+              <button id="terminal-force-kill" class="button danger" type="button">Force Kill</button>
+            </div>
+          </div>
+        </section>
+        <dialog id="terminal-approval-dialog" aria-labelledby="terminal-approval-title" aria-describedby="terminal-approval-description">
+          <h2 id="terminal-approval-title">Approve one terminal execution</h2>
+          <pre id="terminal-approval-details"></pre>
+          <p id="terminal-approval-description">This approval permits only the exact command shown for this execution.</p>
+          <div class="terminal-controls">
+            <button id="terminal-approve-once" class="button primary" type="button">Approve once</button>
+            <button id="terminal-whitelist-exact" class="button secondary" type="button" hidden>Whitelist exact command and run</button>
+            <button id="terminal-cancel-approval" class="button secondary" type="button">Cancel</button>
+          </div>
+        </dialog>
+
+        <section id="session-model-controls" class="model-controls surface-card" aria-labelledby="model-controls-heading">
+          <h2 id="model-controls-heading" class="visually-hidden">Active model and context</h2>
+          <div class="model-control-copy">
+            <p id="active-model" class="model-status" aria-live="polite">Loading model selection…</p>
+            <p id="active-context" class="context-status" aria-live="polite">Context status unavailable</p>
+          </div>
+          <div class="model-control-actions">
+            <button id="open-model-controls" class="button secondary" type="button">Change</button>
+          </div>
+          <p id="model-error" class="error" role="alert" hidden></p>
+        </section>
+
+        <section id="active-project" class="project-indicator" aria-live="polite" hidden>
+          <span class="project-indicator-kind">Project</span>
+          <span aria-hidden="true">·</span>
+          <span id="active-project-label"></span>
+        </section>
+
+        <div class="feedback-stack">
+          <p id="status" class="status" role="status" aria-live="polite" aria-atomic="true">Connecting…</p>
+          <p id="speech-status" class="speech-status" role="status" aria-live="polite" aria-atomic="true">Automatic speech is off.</p>
+          <p id="error" class="error" role="alert" hidden></p>
+        </div>
+
+        <section id="command-activity" class="command-activity surface-card" aria-labelledby="command-activity-heading" hidden>
+          <div class="command-activity-header">
+            <div class="command-activity-title">
+              <p id="command-activity-heading" class="eyebrow">Supervised command</p>
+              <code id="command-label" class="command-label"></code>
+              <p id="command-status" class="command-status" role="status" aria-live="polite"></p>
+            </div>
+            <div class="command-activity-actions">
+              <button id="command-details" class="button secondary" type="button">Details</button>
+              <button id="stop-command" class="button danger" type="button" hidden>Stop</button>
+              <button id="dismiss-command" class="button secondary" type="button" hidden>Dismiss</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="attention-card" class="attention-card surface-card" aria-labelledby="attention-heading" aria-live="polite" hidden>
+          <div class="attention-copy">
+            <p class="eyebrow">Attention</p>
+            <h2 id="attention-heading">Reminder</h2>
+            <p id="attention-text"></p>
+            <p id="attention-schedule" class="attention-meta"></p>
+            <p id="attention-linked" class="attention-meta" hidden></p>
+            <p id="attention-queue" class="attention-meta" hidden></p>
+          </div>
+          <div class="attention-actions">
+            <button id="attention-details" class="button secondary" type="button">Details</button>
+            <button id="attention-done" class="button primary" type="button">Done</button>
+            <button id="attention-dismiss" class="button secondary" type="button">Dismiss</button>
+            <button id="attention-discuss" class="button secondary" type="button">Discuss</button>
+          </div>
+          <div class="delay-actions" aria-label="Delay reminder">
+            <span>Delay</span>
+            <button class="button secondary attention-delay" type="button" data-delay="5m">5 min</button>
+            <button class="button secondary attention-delay" type="button" data-delay="15m">15 min</button>
+            <button class="button secondary attention-delay" type="button" data-delay="1h">1 hour</button>
+            <button id="attention-delay-custom" class="button secondary" type="button">Custom…</button>
+          </div>
+        </section>
+
+        <section
+          id="conversation"
+          class="conversation"
+          role="log"
+          aria-label="Authoritative conversation transcript"
+          aria-live="off"
+          aria-busy="false"
+        ></section>
+
+        <form id="composer" class="composer">
+          <label for="message">Message Tori</label>
+          <textarea
+            id="message"
+            name="message"
+            rows="3"
+            maxlength="32000"
+            autocomplete="off"
+            placeholder="Write a message or use an existing slash command…"
+          ></textarea>
+          <p id="voice-partial" class="voice-partial" aria-live="polite" hidden></p>
+          <div class="composer-actions">
+            <div class="composer-voice-controls" aria-label="Voice controls">
+              <button id="voice-input-status" class="button secondary compact-voice-control voice-input-status" type="button" aria-pressed="false" aria-live="polite">Voice input: Off</button>
+              <button id="voice-ptt" class="button secondary compact-voice-control" type="button" disabled hidden>Hold to talk</button>
+              <button id="auto-speech" class="button secondary compact-voice-control" type="button" aria-pressed="false" aria-label="Turn automatic speech on">Auto voice: Off</button>
+              <button id="stop-speech" class="button danger compact-voice-control" type="button" disabled>Stop speaking</button>
+            </div>
+            <span class="hint">Enter to send · Shift+Enter for a new line</span>
+            <button id="send" class="button primary compact-voice-control" type="submit">Send</button>
+          </div>
+        </form>
+      </section>
+
+      <section id="view-security" class="view management-view security-view" data-view-panel="security" data-view-module-root="security" aria-labelledby="security-heading" hidden>
+        <header class="view-header"><div><p class="eyebrow">Awareness / research</p><h1 id="security-heading">Security</h1></div><button id="security-refresh" class="button secondary" type="button">Refresh</button></header>
+        <p class="view-intro">External threat intelligence is not a local alert, vulnerability scan, or evidence of compromise.</p>
+        <p id="security-feedback" class="status" role="status" aria-live="polite">Loading Security briefing…</p>
+        <section class="surface-card security-section" aria-labelledby="security-briefing-heading">
+          <div class="security-section-heading"><h2 id="security-briefing-heading">Security Briefing</h2><button id="security-run" class="button primary" type="button">Run Night Owl research</button></div>
+          <p id="security-last-run" class="record-meta">No Security research run recorded.</p>
+          <p class="record-meta">Night Owl runs all categories you enable in Settings; Security is off until explicitly enabled.</p>
+          <button id="security-settings" class="button secondary" type="button">Night Owl settings</button>
+          <div id="security-findings" class="record-list" aria-label="Security intelligence findings"></div>
+        </section>
+        <section class="surface-card security-section" aria-labelledby="security-watch-heading"><h2 id="security-watch-heading">Environment Watch</h2><p class="record-meta">Research relevance metadata only. Software presence, installed versions, and vulnerability status are not verified.</p><div id="security-watch" class="security-watch-list"></div></section>
+        <section class="surface-card security-section" aria-labelledby="security-systems-heading"><h2 id="security-systems-heading">Connected Security Systems</h2><p>No systems connected.</p><p class="record-meta">No external security alert sources configured. Tori does not monitor endpoint, LAN, IDS, or SIEM events in V1.</p></section>
+      </section>
+
+      <section id="view-projects" class="view management-view" data-view-panel="projects" data-management-panel aria-labelledby="projects-heading" aria-busy="false" hidden>
+        <header class="view-header">
+          <div><p class="eyebrow">User-owned continuity</p><h1 id="projects-heading">Projects</h1></div>
+          <button class="button secondary refresh-management" type="button">Refresh</button>
+        </header>
+        <p class="view-intro">Projects record what you are working toward and where you left it. Association supplies context only and grants no authority to act.</p>
+        <div class="management-feedback"><p class="status management-status" role="status" aria-live="polite">Local data has not been loaded yet.</p><p class="error management-error" role="alert" hidden></p></div>
+        <form id="project-form" class="management-form surface-card">
+          <label for="project-title">Title</label><input id="project-title" maxlength="120" required>
+          <label for="project-objective">Objective</label><textarea id="project-objective" maxlength="1000" rows="3" required></textarea>
+          <button class="button primary mutation" type="submit">Create Project</button>
+        </form>
+        <div id="project-list" class="record-list" aria-label="Projects"></div>
+      </section>
+
+      <section id="view-tasks" class="view management-view" data-view-panel="tasks" data-management-panel aria-labelledby="tasks-heading" aria-busy="false" hidden>
+        <header class="view-header">
+          <div><p class="eyebrow">Current reminders</p><h1 id="tasks-heading">Reminders &amp; legacy tasks</h1></div>
+          <button class="button secondary refresh-management" type="button">Refresh</button>
+        </header>
+        <p class="view-intro">Current reminders are created conversationally and managed here. Existing legacy task records remain available for compatibility.</p>
+        <div class="management-feedback"><p class="status management-status" role="status" aria-live="polite">Local data has not been loaded yet.</p><p class="error management-error" role="alert" hidden></p></div>
+        <h2>Active reminders</h2><div id="reminder-list" class="record-list" aria-label="Active reminders"></div>
+        <h2 class="management-subheading">Existing legacy tasks</h2><div id="task-list" class="record-list" aria-label="Existing legacy tasks"></div>
+        <div class="operational-history-control">
+          <button id="operational-history-toggle" class="button secondary" type="button" aria-expanded="false" aria-controls="operational-history">Show history</button>
+        </div>
+        <section id="operational-history" class="operational-history surface-card" aria-labelledby="operational-history-heading" hidden>
+          <h2 id="operational-history-heading">History</h2>
+          <p id="operational-history-summary" class="view-intro"></p>
+          <h3>Task history</h3><div id="task-history-list" class="record-list" aria-label="Completed and cancelled task history"></div>
+          <h3 class="management-subheading">Reminder history</h3><div id="reminder-history-list" class="record-list" aria-label="Resolved reminder history"></div>
+        </section>
+      </section>
+
+      <section id="view-scheduled-work" class="view management-view" data-view-panel="scheduled-work" data-management-panel aria-labelledby="scheduled-work-heading" aria-busy="false" hidden>
+        <header class="view-header">
+          <div><p class="eyebrow">Persistent bounded permission</p><h1 id="scheduled-work-heading">Scheduled Work</h1></div>
+          <button class="button secondary refresh-management" type="button">Refresh</button>
+        </header>
+        <p class="view-intro">Authorized capabilities run only while Tori's application process exists. Scheduled work is separate from tasks, reminders, and memory.</p>
+        <div class="management-feedback"><p class="status management-status" role="status" aria-live="polite">Local data has not been loaded yet.</p><p class="error management-error" role="alert" hidden></p></div>
+        <form id="scheduled-work-form" class="management-form surface-card">
+          <label for="scheduled-work-title">One-shot Tori backup title</label>
+          <input id="scheduled-work-title" maxlength="4000" value="Back up Tori" required>
+          <label for="scheduled-work-date">Local date</label><input id="scheduled-work-date" type="date" required>
+          <label for="scheduled-work-time">Local time</label><input id="scheduled-work-time" type="time" required>
+          <label for="scheduled-work-missed">If Tori was not running</label>
+          <select id="scheduled-work-missed"><option value="run_when_available">Run once when available</option><option value="skip_if_missed">Skip the missed occurrence</option></select>
+          <div class="record-actions"><button id="scheduled-work-submit" class="button primary mutation" type="submit">Review Authorization</button><button id="scheduled-work-edit-cancel" class="button secondary" type="button" hidden>Cancel Edit</button></div>
+        </form>
+        <h2>Active</h2><div id="scheduled-work-active" class="record-list" aria-label="Active scheduled work"></div>
+        <h2 class="management-subheading">Paused</h2><div id="scheduled-work-paused" class="record-list" aria-label="Paused scheduled work"></div>
+        <h2 class="management-subheading">History</h2><div id="scheduled-work-history" class="record-list" aria-label="Resolved scheduled work"></div>
+        <h2 class="management-subheading">Recent execution runs</h2><div id="scheduled-run-history" class="record-list" aria-label="Scheduled execution history"></div>
+      </section>
+
+      <section
+        id="view-memories"
+        class="view management-view"
+        data-view-panel="memories"
+        data-management-panel
+        aria-labelledby="memories-heading"
+        aria-busy="false"
+        hidden
+      >
+        <header class="view-header">
+          <div>
+            <p class="eyebrow">Curated continuity</p>
+            <h1 id="memories-heading">Memories</h1>
+          </div>
+          <button class="button secondary refresh-management" type="button">Refresh</button>
+        </header>
+        <p class="view-intro">Only explicit ordinary memories are accepted. Edits use the current record version, and form drafts remain only in this page.</p>
+        <div class="management-feedback">
+          <p class="status management-status" role="status" aria-live="polite" aria-atomic="true">Local data has not been loaded yet.</p>
+          <p class="error management-error" role="alert" hidden></p>
+        </div>
+        <form id="memory-form" class="management-form surface-card">
+          <label for="memory-text">Exact memory text</label>
+          <textarea id="memory-text" name="text" rows="3" maxlength="2000"></textarea>
+          <button class="button primary mutation" type="submit">Create Memory</button>
+        </form>
+        <div id="memory-list" class="record-list" aria-label="Current explicit memories"></div>
+      </section>
+
+      <section
+        id="view-knowledge"
+        class="view management-view"
+        data-view-panel="knowledge"
+        data-management-panel
+        aria-labelledby="knowledge-heading"
+        aria-busy="false"
+        hidden
+      >
+        <header class="view-header">
+          <div>
+            <p class="eyebrow">Local reference</p>
+            <h1 id="knowledge-heading">Knowledge</h1>
+          </div>
+          <button class="button secondary refresh-management" type="button">Refresh</button>
+        </header>
+        <p class="view-intro">Register one exact local <code>.txt</code> or <code>.md</code> path. Tori stores registration metadata only; removing a registration never modifies or deletes its source document.</p>
+        <div class="management-feedback">
+          <p class="status management-status" role="status" aria-live="polite" aria-atomic="true">Local data has not been loaded yet.</p>
+          <p class="error management-error" role="alert" hidden></p>
+        </div>
+        <form id="knowledge-form" class="management-form surface-card">
+          <label for="knowledge-path">Exact source path</label>
+          <input id="knowledge-path" name="path" type="text" autocomplete="off">
+          <button class="button primary mutation" type="submit">Register Path</button>
+        </form>
+        <div id="knowledge-list" class="record-list" aria-label="Registered knowledge sources"></div>
+        <div id="invalid-registration-list" class="record-list" aria-label="Invalid registration records"></div>
+      </section>
+
+      <section
+        id="view-commands"
+        class="view reference-view"
+        data-view-panel="commands"
+        aria-labelledby="commands-heading"
+        hidden
+      >
+        <header class="view-header">
+          <div>
+            <p class="eyebrow">Local reference</p>
+            <h1 id="commands-heading">Commands</h1>
+          </div>
+        </header>
+        <p class="view-intro">You can ask Tori naturally for most things. Slash commands are optional shortcuts or explicit controls for specific tasks. To run a command, ask Tori or use the supervised Terminal in Chat. This page is an informational reference, not a set of execution controls.</p>
+
+        <section class="command-section" aria-labelledby="browser-commands-heading">
+          <h2 id="browser-commands-heading">Browser conversation commands</h2>
+          <div class="command-grid">
+            <article class="command-card surface-card" data-browser-command="/search">
+              <h3>/search QUERY</h3>
+              <p>Run one explicitly authorized web search through the configured local SearXNG service.</p>
+            </article>
+            <article class="command-card surface-card" data-browser-command="/remember">
+              <h3><code>/remember TEXT</code></h3>
+              <p>Creates one explicitly approved ordinary memory using the exact supplied text.</p>
+              <p><strong>Graphical equivalent:</strong> Memories → Create Memory.</p>
+            </article>
+            <article class="command-card surface-card" data-browser-command="/memories">
+              <h3><code>/memories</code></h3>
+              <p>Lists Tori's canonical curated memories.</p>
+              <p><strong>Graphical equivalent:</strong> Open Memories.</p>
+            </article>
+            <article class="command-card surface-card" data-browser-command="/update-memory">
+              <h3><code>/update-memory MEMORY_ID NEW_TEXT</code></h3>
+              <p>Replaces the selected memory's current text.</p>
+              <p><strong>Graphical equivalent:</strong> Edit the selected record in Memories. Graphical edits also protect against stale record versions.</p>
+            </article>
+            <article class="command-card surface-card" data-browser-command="/forget">
+              <h3><code>/forget MEMORY_ID</code></h3>
+              <p>Requests removal of one selected memory. Browser use requires a separate confirmation before removal.</p>
+              <p><strong>Graphical equivalent:</strong> Remove the selected record in Memories; confirmation is also required.</p>
+            </article>
+            <article class="command-card surface-card" data-browser-command="/add-knowledge">
+              <h3><code>/add-knowledge PATH</code></h3>
+              <p>Registers one exact supported local <code>.txt</code> or <code>.md</code> source path.</p>
+              <p><strong>Graphical equivalent:</strong> Knowledge → Register Path.</p>
+            </article>
+            <article class="command-card surface-card" data-browser-command="/knowledge">
+              <h3><code>/knowledge</code></h3>
+              <p>Lists knowledge registrations and current availability without source excerpts.</p>
+              <p><strong>Graphical equivalent:</strong> Open Knowledge.</p>
+            </article>
+            <article class="command-card surface-card" data-browser-command="/remove-knowledge">
+              <h3><code>/remove-knowledge SOURCE_ID</code></h3>
+              <p>Removes only the selected registration. It never modifies or deletes the source file.</p>
+              <p><strong>Graphical equivalent:</strong> Remove the selected record in Knowledge; the graphical action requires confirmation.</p>
+            </article>
+          </div>
+        </section>
+
+        <section class="command-section finance-command-section" aria-labelledby="finance-commands-heading">
+          <h2 id="finance-commands-heading">Finance commands</h2>
+          <p class="command-section-intro">Finance slash commands manage initialization and statement-import review. They use configured local Finance storage; proposals and imports require a separate confirmation before durable changes. Ordinary Finance questions do not need a slash command—for example, <em>How much did I spend on fast food this month?</em>, <em>What bills are due next week?</em>, or <em>Can I afford an $800 guitar?</em></p>
+          <div class="command-grid">
+            <article class="command-card surface-card" data-browser-command="/finance">
+              <h3><code>/finance initialize</code></h3>
+              <p>Proposes creating the configured Finance workbook and import folders. Confirmation is required before anything is created.</p>
+            </article>
+            <article class="command-card surface-card">
+              <h3><code>/finance import FILENAME | FRIENDLY ACCOUNT</code></h3>
+              <p>Previews a statement from Finance <code>imports/incoming/</code> for the supplied friendly account label.</p>
+              <p><strong>Example:</strong> <code>/finance import statement.csv | Citi Card</code></p>
+            </article>
+            <article class="command-card surface-card">
+              <h3><code>/finance review</code></h3>
+              <p>Shows unresolved candidates and possible duplicates in the active import preview.</p>
+            </article>
+            <article class="command-card surface-card">
+              <h3><code>/finance review NUMBER | MERCHANT | CATEGORY</code></h3>
+              <p>Reviews one candidate with an exact normalized merchant and category.</p>
+              <p><strong>Example:</strong> <code>/finance review 3 | Amazon | Amazon</code></p>
+            </article>
+            <article class="command-card surface-card">
+              <h3><code>/finance review NUMBER | include</code></h3>
+              <p>Includes a possible duplicate after reviewing it.</p>
+            </article>
+            <article class="command-card surface-card">
+              <h3><code>/finance review NUMBER | exclude</code></h3>
+              <p>Excludes a possible duplicate from the pending import.</p>
+            </article>
+            <article class="command-card surface-card">
+              <h3><code>/finance review rule NUMBER | exact|starts_with|contains | MATCH | MERCHANT | CATEGORY</code></h3>
+              <p>Adds a reviewed reusable merchant rule to this pending import. The rule becomes durable only if the final import is confirmed.</p>
+              <p><strong>Example:</strong> <code>/finance review rule 2 | contains | MCDONALDS | McDonald's | Dining / Fast Food</code></p>
+            </article>
+            <article class="command-card surface-card">
+              <h3><code>/finance review propose</code></h3>
+              <p>Creates the exact import proposal once every included candidate is resolved.</p>
+            </article>
+            <article class="command-card surface-card">
+              <h3><code>/finance review cancel</code></h3>
+              <p>Abandons the transient import review without changing Finance data.</p>
+            </article>
+          </div>
+          <p class="unsupported-commands surface-card">Finance review is available only after a Finance import preview. Unresolved or ambiguous candidates remain local and must be reviewed before a proposal can be produced.</p>
+        </section>
+        <section class="command-section" aria-labelledby="command-notes-heading">
+          <h2 id="command-notes-heading">Command notes</h2>
+          <p class="unsupported-commands surface-card"><strong>Not supported:</strong> <code>/memory</code> is not a valid command. Unsupported command-shaped input is rejected locally instead of being sent to the model.</p>
+        </section>
+
+        <section class="command-section" aria-labelledby="persistence-heading">
+          <h2 id="persistence-heading">What each kind of persistence means</h2>
+          <div class="persistence-summary surface-card">
+            <p><strong>Curated memories</strong> are selected long-term contextual facts.</p>
+            <p><strong>Knowledge registrations</strong> reference external source files; they do not copy those files.</p>
+            <p><strong>Conversation archives</strong> automatically preserve usable transcripts for listing, opening, resuming, and explicit deletion. They are not curated memories.</p>
+          </div>
+        </section>
+
+      </section>
+
+      <section
+        id="view-skills-mcp"
+        class="view management-view"
+        data-view-panel="skills-mcp"
+        aria-labelledby="skills-mcp-heading"
+        aria-busy="false"
+        hidden
+      >
+        <div data-view-module-root="skills-mcp"></div>
+      </section>
+
+      <section
+        id="view-settings"
+        class="view settings-view reference-view"
+        data-view-panel="settings"
+        aria-labelledby="settings-heading"
+        aria-busy="false"
+        hidden
+      >
+        <div data-view-module-root="settings"></div>
+        <section id="terminal-policy-settings" class="terminal-policy-settings surface-card" aria-labelledby="terminal-policy-heading">
+          <h2 id="terminal-policy-heading">Supervised Terminal policy</h2>
+          <p>Exact rules apply to Tori's local-browser command requests. Unmatched commands use Default Ask.</p>
+          <p id="terminal-policy-unavailable" role="status" hidden>Terminal policy is available only from the computer running Tori.</p>
+          <div id="terminal-policy-body" hidden>
+            <form id="terminal-policy-form" class="terminal-policy-form" autocomplete="off">
+              <label for="terminal-policy-id" hidden>Policy rule identifier</label>
+              <input id="terminal-policy-id" type="hidden">
+              <label for="terminal-policy-command">Exact command <input id="terminal-policy-command" required maxlength="2000" spellcheck="false"></label>
+              <label for="terminal-policy-cwd">Working directory <input id="terminal-policy-cwd" required maxlength="1024" placeholder="/path/to/project" spellcheck="false"></label>
+              <label for="terminal-policy-scope">Scope <select id="terminal-policy-scope"><option value="PROJECT_SANDBOX">Project sandbox</option><option value="HOST_USER">Host user</option></select></label>
+              <label for="terminal-policy-class">Decision <select id="terminal-policy-class"><option value="WHITELIST">Whitelist</option><option value="ALWAYS_ASK">Always Ask</option><option value="BLACKLIST">Blacklist</option></select></label>
+              <label for="terminal-policy-enabled"><input id="terminal-policy-enabled" type="checkbox" checked> Enabled</label>
+              <button id="terminal-policy-save" class="button primary" type="submit">Add exact rule</button>
+              <button id="terminal-policy-reset" class="button secondary" type="button">Clear edit</button>
+            </form>
+            <p id="terminal-policy-feedback" role="status" aria-live="polite"></p>
+            <div id="terminal-policy-rules" aria-label="Configured terminal rules"></div>
+          </div>
+        </section>
+      </section>
+
+      <dialog id="model-context-dialog" class="model-context-dialog" aria-labelledby="model-context-heading" aria-describedby="model-context-description">
+        <form id="model-context-form" class="dialog-card model-context-card" method="dialog">
+          <h2 id="model-context-heading">Model and conversation context</h2>
+          <p id="model-context-description">Choose only among administrator-configured local profiles and models. Context choices affect future requests and never rewrite the archive.</p>
+          <div class="model-context-fields">
+            <label for="provider-selector">Provider profile</label>
+            <select id="provider-selector" name="provider" disabled></select>
+            <label for="model-selector">Model</label>
+            <select id="model-selector" name="model" disabled></select>
+            <label for="context-selector">Conversation context</label>
+            <select id="context-selector" name="context" disabled></select>
+          </div>
+          <p id="context-capacity-note" class="context-capacity-note"></p>
+          <section class="context-details" aria-labelledby="context-details-heading">
+            <h3 id="context-details-heading">Last completed model request</h3>
+            <dl id="context-details-list" class="command-metadata"></dl>
+            <p id="context-omission-note"></p>
+            <p class="context-semantics">A fixed value is Tori's input-planning budget with reply and estimator headroom. It is not a provider-neutral maximum-output request or a promise about an unverified backend window.</p>
+          </section>
+          <p id="model-dialog-error" class="error" role="alert" hidden></p>
+          <div class="dialog-actions model-dialog-actions">
+            <button id="refresh-models" class="button secondary" type="button">Refresh Models</button>
+            <button id="cancel-model-controls" class="button secondary" type="button">Cancel</button>
+            <button id="save-model-controls" class="button primary" type="submit">Apply</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog id="command-details-dialog" class="command-details-dialog" aria-labelledby="command-details-heading" aria-describedby="command-details-description">
+        <form method="dialog" class="command-details-dialog-card">
+          <h2 id="command-details-heading">Command execution details</h2>
+          <p id="command-details-description">Application-owned evidence. Command output is untrusted text.</p>
+          <dl id="command-metadata" class="command-metadata"></dl>
+          <p><strong>Exact command</strong></p>
+          <pre id="command-exact" class="command-output"></pre>
+          <p><strong>stdout (untrusted command output)</strong></p>
+          <pre id="command-stdout" class="command-output"></pre>
+          <p><strong>stderr (untrusted command output)</strong></p>
+          <pre id="command-stderr" class="command-output"></pre>
+          <div class="dialog-actions">
+            <button id="close-command-details" class="button secondary" type="submit">Close</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog
+        id="confirmation"
+        aria-labelledby="confirmation-heading"
+        aria-describedby="confirmation-message"
+      >
+        <form method="dialog">
+          <h2 id="confirmation-heading">Confirm local change</h2>
+          <p id="confirmation-message"></p>
+          <pre id="command-proposal" class="confirmation-target" hidden></pre>
+          <div class="dialog-actions">
+            <button id="cancel-confirmation" class="button secondary" value="cancel">Cancel</button>
+            <button id="accept-confirmation" class="button danger" value="confirm">Confirm</button>
+          </div>
+        </form>
+      </dialog>
+
+      <dialog
+        id="management-confirmation"
+        aria-labelledby="management-confirmation-heading"
+        aria-describedby="management-confirmation-message management-confirmation-target"
+      >
+        <form method="dialog">
+          <h2 id="management-confirmation-heading">Confirm local change</h2>
+          <p id="management-confirmation-message"></p>
+          <pre id="management-confirmation-target" class="confirmation-target"></pre>
+          <div class="dialog-actions">
+            <button id="management-cancel" class="button secondary" type="button">Cancel</button>
+            <button id="management-confirm" class="button danger" type="button">Confirm</button>
+          </div>
+        </form>
+      </dialog>
+      <dialog id="skills-confirmation" aria-labelledby="skills-confirmation-heading" aria-describedby="skills-confirmation-message skills-confirmation-target">
+        <form method="dialog">
+          <h2 id="skills-confirmation-heading">Confirm capability change</h2>
+          <p id="skills-confirmation-message"></p>
+          <pre id="skills-confirmation-target" class="confirmation-target"></pre>
+          <div class="dialog-actions">
+            <button id="skills-cancel" class="button secondary" type="button">Cancel</button>
+            <button id="skills-confirm" class="button danger" type="button">Confirm</button>
+          </div>
+        </form>
+      </dialog>
+    </main>
+
+    <aside id="utility-rail" class="utility-rail" aria-label="Status and utilities">
+      <header class="utility-rail-header">
+        <div><p class="eyebrow">Workspace</p><h2>At a glance</h2></div>
+      </header>
+      <div class="utility-module" data-utility-module-root="overview">
+        <div id="home-work-stack" class="home-card-stack"></div>
+        <div id="home-support-stack" class="home-card-stack"></div>
+        <article id="utility-status-card" class="utility-card surface-card" data-state="neutral">
+          <p class="eyebrow">Application / session</p>
+          <h3><span class="status-indicator" aria-hidden="true"></span><span id="utility-status-label">Connecting…</span></h3>
+          <p id="utility-status-detail" class="utility-card-detail">Waiting for authoritative local session state.</p>
+          <div id="home-session-slot" class="home-session-slot"></div>
+        </article>
+        <article id="utility-host-card" class="utility-card surface-card" aria-labelledby="utility-host-heading">
+          <p class="eyebrow">Host</p>
+          <h3 id="utility-host-heading">System Monitor</h3>
+          <p id="utility-host-freshness" class="utility-card-detail" role="status">Waiting for readings…</p>
+          <dl class="utility-session-facts utility-host-facts">
+            <div><dt>CPU</dt><dd id="utility-host-cpu">Loading…</dd></div>
+            <div><dt>RAM</dt><dd id="utility-host-memory">Loading…</dd></div>
+            <div><dt>GPU</dt><dd id="utility-host-gpu">Loading…</dd></div>
+            <div id="utility-host-vram-row" hidden><dt>VRAM</dt><dd id="utility-host-vram"></dd></div>
+          </dl>
+        </article>
+        <article id="utility-attention-card" class="utility-card surface-card attention-workspace-card" hidden>
+          <div class="utility-card-heading">
+            <div><p class="eyebrow">Attention</p><h3>Attention &amp; review</h3></div>
+            <span id="utility-attention-count" class="coding-work-state">0</span>
+          </div>
+          <div id="utility-attention-groups" class="attention-workspace-groups"></div>
+          <p id="utility-attention-empty" class="utility-card-detail">Nothing meaningful needs review.</p>
+        </article>
+        <article id="utility-coding-work-card" class="utility-card surface-card coding-work-card" data-state="neutral" hidden>
+          <div class="utility-card-heading">
+            <div><p class="eyebrow">Delegated Work</p><h3 id="utility-coding-work-label">Recent work</h3></div>
+            <span id="utility-coding-work-state" class="coding-work-state">Unknown</span>
+          </div>
+          <div id="utility-coding-work-overview" class="coding-work-overview" aria-label="Active and recent delegated work"></div>
+          <p id="utility-coding-work-latest" class="utility-card-detail"></p>
+          <dl class="coding-work-summary">
+            <div><dt>Workspace</dt><dd id="utility-coding-work-workspace"></dd></div>
+            <div><dt>Updated</dt><dd><time id="utility-coding-work-updated"></time></dd></div>
+          </dl>
+          <details id="utility-coding-work-details" class="coding-work-details">
+            <summary>Details</summary>
+            <dl class="coding-work-summary coding-work-detail-facts">
+              <div><dt>Objective</dt><dd id="utility-coding-work-objective"></dd></div>
+              <div><dt>Authorization</dt><dd id="utility-coding-work-authority"></dd></div>
+              <div><dt>Acceptance</dt><dd id="utility-coding-work-acceptance"></dd></div>
+              <div id="utility-coding-work-related-row" hidden><dt>Related work</dt><dd id="utility-coding-work-related"></dd></div>
+            </dl>
+            <section aria-labelledby="utility-coding-work-paths-heading">
+              <h4 id="utility-coding-work-paths-heading">Changed files</h4>
+              <ul id="utility-coding-work-paths" class="coding-work-list"></ul>
+              <p id="utility-coding-work-paths-empty" class="utility-card-detail">No changed files reported.</p>
+            </section>
+            <section aria-labelledby="utility-coding-work-activity-heading">
+              <h4 id="utility-coding-work-activity-heading">Recent activity</h4>
+              <ul id="utility-coding-work-activity" class="coding-work-list"></ul>
+              <p id="utility-coding-work-activity-empty" class="utility-card-detail">No recent activity reported.</p>
+            </section>
+            <section aria-labelledby="utility-coding-work-verification-heading">
+              <h4 id="utility-coding-work-verification-heading">Verification</h4>
+              <ul id="utility-coding-work-verification" class="coding-work-list"></ul>
+              <p id="utility-coding-work-verification-empty" class="utility-card-detail">No verification evidence recorded.</p>
+            </section>
+            <div id="utility-coding-work-result-group" hidden>
+              <h4>Result</h4>
+              <p id="utility-coding-work-result" class="utility-card-detail"></p>
+            </div>
+            <p id="utility-coding-work-error" class="utility-card-detail form-error" role="alert" hidden></p>
+            <div class="utility-actions coding-work-actions">
+              <button id="utility-coding-work-cancel" class="button danger" type="button" hidden>Stop Delegated Work</button>
+            </div>
+          </details>
+        </article>
+        <article id="utility-research-card" class="utility-card surface-card coding-work-card" data-state="neutral" hidden>
+          <div class="utility-card-heading">
+            <div><p class="eyebrow">Research</p><h3 id="utility-research-title">Recent research</h3></div>
+            <span id="utility-research-state" class="coding-work-state">Unknown</span>
+          </div>
+          <p id="utility-research-progress" class="utility-card-detail"></p>
+          <dl class="coding-work-summary">
+            <div><dt>Phase</dt><dd id="utility-research-phase"></dd></div>
+            <div><dt>Sources</dt><dd id="utility-research-sources"></dd></div>
+            <div><dt>Limits</dt><dd id="utility-research-limits"></dd></div>
+          </dl>
+          <details class="coding-work-details">
+            <summary>Report and evidence</summary>
+            <p id="utility-research-objective" class="utility-card-detail"></p>
+            <p id="utility-research-validation" class="utility-card-detail"></p>
+            <pre id="utility-research-report" class="command-output"></pre>
+            <ul id="utility-research-source-list" class="coding-work-list"></ul>
+            <p id="utility-research-error" class="utility-card-detail form-error" role="alert" hidden></p>
+            <div class="utility-actions coding-work-actions">
+              <button id="utility-research-cancel" class="button danger" type="button" hidden>Stop Research</button>
+            </div>
+          </details>
+        </article>
+        <article id="utility-upcoming-card" class="utility-card surface-card">
+          <div class="utility-card-heading">
+            <div><p class="eyebrow">Upcoming</p><h3>Schedule</h3></div>
+            <button class="utility-card-link" type="button" data-utility-action="tasks">View</button>
+          </div>
+          <p id="utility-upcoming-empty" class="utility-card-detail">Loading canonical Tasks, Reminders, and Scheduled Work…</p>
+          <div id="utility-upcoming-list" class="utility-upcoming-list" hidden></div>
+        </article>
+        <article id="utility-activity-card" class="utility-card surface-card" data-state="neutral" hidden>
+          <p class="eyebrow">Activity</p>
+          <h3 id="utility-activity-label">No active work</h3>
+          <p id="utility-activity-detail" class="utility-card-detail">Tori is idle. No background activity is being claimed.</p>
+        </article>
+      </div>
+    </aside>
+    </div>
+  </div>
+
+  <dialog id="reminder-details-dialog" aria-labelledby="reminder-details-heading" aria-describedby="reminder-details-description">
+    <article class="dialog-card"><h2 id="reminder-details-heading">Reminder details</h2><p id="reminder-details-description">Application-owned schedule and lifecycle information.</p><dl id="reminder-details" class="command-metadata"></dl><div class="dialog-actions"><button id="close-reminder-details" class="button secondary" type="button">Close</button></div></article>
+  </dialog>
+  <dialog id="reminder-delay-dialog" aria-labelledby="reminder-delay-heading" aria-describedby="reminder-delay-description">
+    <form id="reminder-delay-form" class="dialog-card" method="dialog"><h2 id="reminder-delay-heading">Choose a local date and time</h2><p id="reminder-delay-description">Tori resolves this local civil time using the configured timezone.</p><label for="reminder-delay-date">Date</label><input id="reminder-delay-date" type="date" required><label for="reminder-delay-time">Time</label><input id="reminder-delay-time" type="time" required><div class="dialog-actions"><button id="cancel-reminder-delay" class="button secondary" type="button">Cancel</button><button class="button primary" type="submit">Delay</button></div></form>
+  </dialog>
+  <dialog id="planning-action-dialog" aria-labelledby="planning-action-heading" aria-describedby="planning-action-description">
+    <form id="planning-action-form" class="dialog-card" method="dialog">
+      <h2 id="planning-action-heading">Add to Planning</h2>
+      <label for="planning-action-command" hidden>Planning action</label><input id="planning-action-command" type="hidden">
+      <label for="planning-action-kind">Type</label><select id="planning-action-kind"><option value="task">Task</option><option value="event">Event</option><option value="reminder">Reminder</option></select>
+      <label for="planning-action-title">Title</label><input id="planning-action-title" maxlength="240" required>
+      <label for="planning-action-when">When or change</label><input id="planning-action-when" maxlength="240" placeholder="tomorrow at 3 PM" required>
+      <p id="planning-action-description" class="utility-card-detail">Tori will show a durable-change proposal before anything is saved.</p>
+      <div class="dialog-actions"><button id="planning-action-cancel" class="button secondary" type="button">Cancel</button><button class="button primary" type="submit">Review</button></div>
+    </form>
+  </dialog>
+</body>
+</html>

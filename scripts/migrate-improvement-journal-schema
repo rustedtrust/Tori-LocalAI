@@ -1,0 +1,25 @@
+#!/usr/bin/env python3
+"""Explicit Improvement Journal v1-to-v2 provenance migration."""
+
+from __future__ import annotations
+
+import argparse
+from pathlib import Path
+
+from tori.capability_growth import (
+    DEFAULT_IMPROVEMENT_JOURNAL,
+    SQLiteImprovementJournal,
+)
+
+
+def main() -> int:
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--path", type=Path, default=DEFAULT_IMPROVEMENT_JOURNAL)
+    arguments = parser.parse_args()
+    before, after = SQLiteImprovementJournal(arguments.path).migrate_v1_to_v2()
+    print(f"Improvement Journal schema migrated: {before} -> {after}")
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())
